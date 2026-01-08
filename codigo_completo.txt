@@ -1,0 +1,319 @@
+
+
+# === ARCHIVO: ./app/main.py ===
+
+from fastapi import FastAPI, Request, status
+from sqlmodel import SQLModel
+from .routers import items, users
+from .database import engine
+from sqlalchemy.exc import IntegrityError
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+@app.exception_handler(IntegrityError)
+def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"error": "Integrity Error", "detail": "Duplicated name"})
+
+app.include_router(items.router)
+app.include_router(users.router)
+
+@app.on_event("startup")
+def on_startup():
+   SQLModel.metadata.create_all(engine)
+
+
+# === ARCHIVO: ./app/models.py ===
+
+from sqlmodel import SQLModel, Field
+
+class Token(SQLModel):
+    access_token: str
+    token_type: str
+
+class UserBase(SQLModel):
+    name: str = Field(index=True)
+    email: str = Field(unique=True)
+
+class UserCreate(UserBase):
+    password: str
+    
+class User(UserBase):
+    id: int | None = Field(default=None, primary_key=True)
+    hashed_password: str
+
+class PublicUser(UserBase):
+    id: int
+
+class ItemBase(SQLModel):
+    name: str = Field(index=True, unique=True)
+    price: int = Field(gt=0)
+    stock: int = Field(ge=0)
+
+class Item(ItemBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+
+class UpdateItem(SQLModel):
+    name: str | None = Field(default=None)
+    price: int | None = Field(default=None, gt=0)
+    stock: int | None = Field(default=None, ge=0)
+
+class FilterItem(SQLModel):
+    name: str | None = Field(default=None)
+    exact_price: int | None = Field(default=None, gt=0)
+    stock: int | None = Field(default=None, ge=0)
+    min_price: int | None = Field(default=None, ge=0)
+    max_price: int | None = Field(default=None, gt=0)
+
+# === ARCHIVO: ./app/routers/users.py ===
+
+from fastapi import APIRouter, status, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+from typing import Annotated
+from datetime import timedelta
+from ..models import Token, User, PublicUser, UserCreate
+from ..database import GetSession
+from ..auth import authenticate_user, get_current_user, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRES_MINUTES
+
+router = APIRouter(prefix="/users", tags=["users"])
+
+@router.post("/token", response_model=Token)
+def login_for_access_token(session: GetSession, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    user = authenticate_user(session, form_data.username, form_data.password)
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    expires_token_time = timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
+    access_token = create_access_token({"sub": user.email}, expires_token_time)
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/")
+def create_user (session: GetSession, user: UserCreate) -> PublicUser:
+    hashed_pwd = get_password_hash(user.password)
+    user = User(**user.model_dump(exclude={"password"}), hashed_password=hashed_pwd)
+
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+
+    return user
+
+
+
+# === ARCHIVO: ./app/routers/items.py ===
+
+from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
+from sqlmodel import select
+from typing import Annotated
+from ..models import Item, ItemBase, FilterItem, UpdateItem
+from ..database import GetSession
+from ..utils import send_notification_email, write_audit_log, export_csv
+from ..auth import get_current_user
+
+router = APIRouter(prefix="/items", tags=["items"], dependencies=[Depends(get_current_user)] )
+
+
+def get_item(id: int, session: GetSession) -> Item:
+    item = session.get(Item, id)
+
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Item not found")
+
+    return item
+
+GetItem = Annotated[Item, Depends(get_item)]
+
+@router.post("/", status_code=status.HTTP_201_CREATED)
+def create_item(item: ItemBase, session: GetSession, background_tasks: BackgroundTasks) -> Item:
+    item = Item.model_validate(item)
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+    background_tasks.add_task(send_notification_email, "admin@tienda.com", f"Se agregó el producto {item.name}")
+
+    return item
+
+@router.post("/export")
+def export(background_tasks: BackgroundTasks):
+    background_tasks.add_task(export_csv)
+    return{"message": "La exportación ha comenzado. Te avisaremos cuando termine."}
+
+@router.get("/{id}")
+def get_item_by_id(item: GetItem) -> Item:
+        return item
+
+@router.get("/")
+def get_items(session: GetSession, item_filter: Annotated[FilterItem, Depends()]) -> list[Item]:
+    statement = select(Item)
+
+    if item_filter.name is not None:
+        statement = statement.where(Item.name.contains(item_filter.name))
+
+    if item_filter.exact_price is not None:
+        statement = statement.where(Item.price == item_filter.exact_price)
+    
+    if item_filter.min_price is not None:
+        statement = statement.where(Item.price >= item_filter.min_price)
+
+    if item_filter.max_price is not None:
+        statement = statement.where(Item.price <= item_filter.max_price)
+
+    if item_filter.stock is not None:
+        statement = statement.where(Item.stock == item_filter.stock)
+
+    items = session.exec(statement).all()
+
+    return items
+
+@router.patch("/{id}")
+def update_item(session: GetSession, item: GetItem, item_data: UpdateItem, background_tasks: BackgroundTasks):
+
+
+    for key, value in item_data.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+
+    session.add(item)
+    session.commit()
+    session.refresh(item)
+
+    if item_data.price is not None:
+        background_tasks.add_task(write_audit_log, item.id, item_data.price)
+
+    return item
+
+@router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_item(session: GetSession, item: GetItem):
+    session.delete(item)
+    session.commit()
+
+    return None
+
+
+# === ARCHIVO: ./app/routers/__init__.py ===
+
+
+
+# === ARCHIVO: ./app/__init__.py ===
+
+
+
+# === ARCHIVO: ./app/utils.py ===
+
+import time
+
+
+def send_notification_email(email: str, message: str) -> None:
+    print(f"Enviando correo a {email}: {message}")
+    time.sleep(3)
+    print(f"El correo fue exitosamente enviado a {email}!")
+
+
+def write_audit_log(item_id: int, new_price: int) -> None:
+    with open("./log_precios.txt", "a") as logs:
+        logs.write(f"El producto {item_id} cambió su precio a ${new_price}\n")
+
+def export_csv():
+    time.sleep(5)
+    with open("./export.csv", "w") as export:
+        export.write("Exported")
+
+    print("Exportación completada.")
+    
+
+# === ARCHIVO: ./app/auth.py ===
+
+from fastapi import status, HTTPException, Depends
+from fastapi.security import OAuth2PasswordBearer
+import jwt
+from jwt.exceptions import InvalidTokenError
+from pwdlib import PasswordHash
+from sqlmodel import select, Session
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
+from .database import GetSession
+from .models import User
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRES_MINUTES = 30
+SECRET_KEY = "d49eb8e8fc27ca6027d03b14fc88b173ad144fbbc2e1957b899a2a7a97afd391"
+
+oauth_scheme = OAuth2PasswordBearer(tokenUrl="/users/token")
+password_hash = PasswordHash.recommended()
+
+def verify_password(plain_password, hashed_password):
+    return password_hash.verify(plain_password, hashed_password)
+
+def get_password_hash(plain_password):
+    return password_hash.hash(plain_password)
+
+def get_user(session: Session, email) -> User | None:
+    return session.exec(select(User).where(User.email == email)).first()
+
+def authenticate_user(session: Session, email, password):
+    user = get_user(session, email)
+
+    if not user:
+        return False
+    
+    if not verify_password(password, user.hashed_password):
+        return False
+    
+    return user
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
+    to_encode = data.copy()
+
+    if expires_delta:
+        expires = datetime.now(timezone.utc) + expires_delta
+
+    else:
+        expires = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRES_MINUTES)
+
+    to_encode.update({"exp": expires})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    return encoded_jwt
+
+def get_current_user(session: GetSession, token: Annotated[str, Depends(oauth_scheme)]):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Couldn't verify credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+
+        if not email:
+            raise credentials_exception
+    except InvalidTokenError:
+        raise credentials_exception
+    
+    user = get_user(session, email)
+
+    if not user:
+        raise credentials_exception
+    
+    return user
+
+
+# === ARCHIVO: ./app/database.py ===
+
+from fastapi import Depends
+from sqlmodel import create_engine, Session
+from typing import Annotated
+
+engine = create_engine("sqlite:///database.db")
+
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+GetSession = Annotated[Session, Depends(get_session)]

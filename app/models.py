@@ -1,5 +1,23 @@
 from sqlmodel import SQLModel, Field
 
+class Token(SQLModel):
+    access_token: str
+    token_type: str
+
+class UserBase(SQLModel):
+    name: str = Field(index=True)
+    email: str = Field(unique=True)
+
+class UserCreate(UserBase):
+    password: str
+    
+class User(UserBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    hashed_password: str
+
+class PublicUser(UserBase):
+    id: int
+
 class ItemBase(SQLModel):
     name: str = Field(index=True, unique=True)
     price: int = Field(gt=0)

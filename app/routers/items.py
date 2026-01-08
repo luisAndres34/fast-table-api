@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from sqlmodel import select
 from typing import Annotated
-from ..models import *
+from ..models import Item, ItemBase, FilterItem, UpdateItem
 from ..database import GetSession
-from ..utils import *
+from ..utils import send_notification_email, write_audit_log, export_csv
+from ..auth import get_current_user
 
-router = APIRouter(prefix="/items", tags=["items"])
+router = APIRouter(prefix="/items", tags=["items"], dependencies=[Depends(get_current_user)] )
 
 
 def get_item(id: int, session: GetSession) -> Item:
@@ -35,7 +36,7 @@ def export(background_tasks: BackgroundTasks):
 
 @router.get("/{id}")
 def get_item_by_id(item: GetItem) -> Item:
-    return item
+        return item
 
 @router.get("/")
 def get_items(session: GetSession, item_filter: Annotated[FilterItem, Depends()]) -> list[Item]:
