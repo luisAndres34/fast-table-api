@@ -9,8 +9,8 @@ from ..auth import authenticate_user, get_password_hash, create_access_token, AC
 router = APIRouter(prefix="/users", tags=["users"])
 
 @router.post("/token", response_model=Token)
-def login_for_access_token(session: GetSession, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
-    user = authenticate_user(session, form_data.username, form_data.password)
+async def login_for_access_token(session: GetSession, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    user = await authenticate_user(session, form_data.username, form_data.password)
 
     if not user:
         raise HTTPException(
@@ -24,14 +24,13 @@ def login_for_access_token(session: GetSession, form_data: Annotated[OAuth2Passw
 
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.post("/")
-def create_user (session: GetSession, user: UserCreate) -> PublicUser:
+@router.post("/", status_code=status.HTTP_201_CREATED)
+async def create_user (session: GetSession, user: UserCreate) -> PublicUser:
     hashed_pwd = get_password_hash(user.password)
     user = User(**user.model_dump(exclude={"password"}), hashed_password=hashed_pwd)
 
     session.add(user)
-    session.commit()
-    session.refresh(user)
+    await session.commit()
+    await session.refresh(user)
 
     return user
-

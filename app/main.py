@@ -1,11 +1,17 @@
 from fastapi import FastAPI, Request, status
 from sqlmodel import SQLModel
-from .routers import items, users
+from .models import Item, User, Category
+from .routers import items, users, categories
 from .database import engine
 from sqlalchemy.exc import IntegrityError
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(IntegrityError)
 def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
@@ -13,7 +19,5 @@ def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONRespon
 
 app.include_router(items.router)
 app.include_router(users.router)
+app.include_router(categories.router)
 
-@app.on_event("startup")
-def on_startup():
-   SQLModel.metadata.create_all(engine)

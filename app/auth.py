@@ -3,7 +3,8 @@ from fastapi.security import OAuth2PasswordBearer
 import jwt
 from jwt.exceptions import InvalidTokenError
 from pwdlib import PasswordHash
-from sqlmodel import select, Session
+from sqlmodel import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from .database import GetSession
@@ -23,11 +24,12 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(plain_password):
     return password_hash.hash(plain_password)
 
-def get_user(session: Session, email) -> User | None:
-    return session.exec(select(User).where(User.email == email)).first()
+async def get_user(session: AsyncSession, email) -> User | None:
+    result = await session.execute(select(User).where(User.email == email))
+    return result.scalars().first()
 
-def authenticate_user(session: Session, email, password):
-    user = get_user(session, email)
+async def authenticate_user(session: AsyncSession, email, password):
+    user = await get_user(session, email)
 
     if not user:
         return False
@@ -51,7 +53,7 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
 
     return encoded_jwt
 
-def get_current_user(session: GetSession, token: Annotated[str, Depends(oauth_scheme)]):
+async def get_current_user(session: GetSession, token: Annotated[str, Depends(oauth_scheme)]):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Couldn't verify credentials",
@@ -67,7 +69,7 @@ def get_current_user(session: GetSession, token: Annotated[str, Depends(oauth_sc
     except InvalidTokenError:
         raise credentials_exception
     
-    user = get_user(session, email)
+    user = await get_user(session, email)
 
     if not user:
         raise credentials_exception

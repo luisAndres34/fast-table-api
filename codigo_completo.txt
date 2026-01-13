@@ -1,15 +1,20 @@
-
-
-# === ARCHIVO: ./app/main.py ===
-
+========================================
+FILE: ./app/main.py
+========================================
 from fastapi import FastAPI, Request, status
 from sqlmodel import SQLModel
 from .routers import items, users
 from .database import engine
 from sqlalchemy.exc import IntegrityError
 from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    SQLModel.metadata.create_all(engine)
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.exception_handler(IntegrityError)
 def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
@@ -18,13 +23,11 @@ def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONRespon
 app.include_router(items.router)
 app.include_router(users.router)
 
-@app.on_event("startup")
-def on_startup():
-   SQLModel.metadata.create_all(engine)
+-e 
 
-
-# === ARCHIVO: ./app/models.py ===
-
+========================================
+FILE: ./app/models.py
+========================================
 from sqlmodel import SQLModel, Field
 
 class Token(SQLModel):
@@ -38,7 +41,7 @@ class UserBase(SQLModel):
 class UserCreate(UserBase):
     password: str
     
-class User(UserBase):
+class User(UserBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     hashed_password: str
 
@@ -63,17 +66,18 @@ class FilterItem(SQLModel):
     exact_price: int | None = Field(default=None, gt=0)
     stock: int | None = Field(default=None, ge=0)
     min_price: int | None = Field(default=None, ge=0)
-    max_price: int | None = Field(default=None, gt=0)
+    max_price: int | None = Field(default=None, gt=0)-e 
 
-# === ARCHIVO: ./app/routers/users.py ===
-
+========================================
+FILE: ./app/routers/users.py
+========================================
 from fastapi import APIRouter, status, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Annotated
 from datetime import timedelta
 from ..models import Token, User, PublicUser, UserCreate
 from ..database import GetSession
-from ..auth import authenticate_user, get_current_user, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRES_MINUTES
+from ..auth import authenticate_user, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRES_MINUTES
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -93,7 +97,7 @@ def login_for_access_token(session: GetSession, form_data: Annotated[OAuth2Passw
 
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.post("/")
+@router.post("/", status_code=status.HTTP_201_CREATED)
 def create_user (session: GetSession, user: UserCreate) -> PublicUser:
     hashed_pwd = get_password_hash(user.password)
     user = User(**user.model_dump(exclude={"password"}), hashed_password=hashed_pwd)
@@ -103,11 +107,11 @@ def create_user (session: GetSession, user: UserCreate) -> PublicUser:
     session.refresh(user)
 
     return user
+-e 
 
-
-
-# === ARCHIVO: ./app/routers/items.py ===
-
+========================================
+FILE: ./app/routers/items.py
+========================================
 from fastapi import APIRouter, Depends, status, HTTPException, BackgroundTasks
 from sqlmodel import select
 from typing import Annotated
@@ -193,18 +197,21 @@ def delete_item(session: GetSession, item: GetItem):
     session.commit()
 
     return None
+-e 
 
+========================================
+FILE: ./app/routers/__init__.py
+========================================
+-e 
 
-# === ARCHIVO: ./app/routers/__init__.py ===
+========================================
+FILE: ./app/__init__.py
+========================================
+-e 
 
-
-
-# === ARCHIVO: ./app/__init__.py ===
-
-
-
-# === ARCHIVO: ./app/utils.py ===
-
+========================================
+FILE: ./app/utils.py
+========================================
 import time
 
 
@@ -224,10 +231,26 @@ def export_csv():
         export.write("Exported")
 
     print("Exportación completada.")
-    
+    -e 
 
-# === ARCHIVO: ./app/auth.py ===
+========================================
+FILE: ./app/config.py
+========================================
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
+class Settings(BaseSettings):
+    DATABASE_URL: str
+    SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRES_MINUTES: int
+
+    model_config = SettingsConfigDict(env_file=".env")
+
+settings = Settings()
+-e 
+
+========================================
+FILE: ./app/auth.py
+========================================
 from fastapi import status, HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 import jwt
@@ -238,10 +261,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from .database import GetSession
 from .models import User
+from .config import settings
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRES_MINUTES = 30
-SECRET_KEY = "d49eb8e8fc27ca6027d03b14fc88b173ad144fbbc2e1957b899a2a7a97afd391"
+ACCESS_TOKEN_EXPIRES_MINUTES = settings.ACCESS_TOKEN_EXPIRES_MINUTES
+SECRET_KEY = settings.SECRET_KEY
 
 oauth_scheme = OAuth2PasswordBearer(tokenUrl="/users/token")
 password_hash = PasswordHash.recommended()
@@ -302,18 +326,118 @@ def get_current_user(session: GetSession, token: Annotated[str, Depends(oauth_sc
         raise credentials_exception
     
     return user
+-e 
 
-
-# === ARCHIVO: ./app/database.py ===
-
+========================================
+FILE: ./app/database.py
+========================================
 from fastapi import Depends
 from sqlmodel import create_engine, Session
 from typing import Annotated
+from .config import settings
 
-engine = create_engine("sqlite:///database.db")
+engine = create_engine(settings.DATABASE_URL)
 
 def get_session():
     with Session(engine) as session:
         yield session
 
 GetSession = Annotated[Session, Depends(get_session)]
+-e 
+
+========================================
+FILE: ./tests/test_items.py
+========================================
+from fastapi.testclient import TestClient
+from fastapi import status
+import pytest
+
+
+def test_create_item_no_auth(client: TestClient):
+   response = client.post("/items/", json={"name": "Item Robado", "price": 50, "stock": 100})
+
+   assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+@pytest.fixture
+def auth_headers(client: TestClient):
+   user_data = {"name": "Luis", "email": "andreslph3@gmail.com", "password": "Luis123"}
+   user_response = client.post("/users/", json=user_data)
+
+   assert user_response.status_code == status.HTTP_201_CREATED
+
+   login_data = {"username": "andreslph3@gmail.com", "password": "Luis123"}
+   login_response = client.post("/users/token", data=login_data)
+
+   assert login_response.status_code == status.HTTP_200_OK
+
+   token = login_response.json()["access_token"]
+   return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def sample_item(client: TestClient, auth_headers):
+   item_data = {"name": "Manzana", "price": 5, "stock": 10}
+   response = client.post("/items/", json=item_data, headers=auth_headers)
+    
+   assert response.status_code == status.HTTP_201_CREATED
+   assert response.json()["name"] == "Manzana"
+
+   return response.json()
+
+
+def test_get_item(client: TestClient, auth_headers, sample_item):
+   item_id = sample_item["id"]
+   response = client.get(f"/items/{item_id}", headers=auth_headers)
+   assert response.status_code == status.HTTP_200_OK
+
+
+def test_get_invalid_item_id(client: TestClient, auth_headers):
+   item_id = 0
+   response = client.get(f"/items/{item_id}", headers=auth_headers)
+   assert response.status_code == status.HTTP_404_NOT_FOUND
+-e 
+
+========================================
+FILE: ./tests/conftest.py
+========================================
+from fastapi.testclient import TestClient
+import pytest
+from sqlmodel import Session, create_engine, SQLModel, StaticPool
+from app.main import app
+from app.database import get_session
+
+sqlite_url = "sqlite:///:memory:"
+engine = create_engine(
+    sqlite_url,
+    connect_args = {"check_same_thread": False},
+    poolclass=StaticPool,
+)
+
+@pytest.fixture(name="session")
+def session_fixture():
+    SQLModel.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        yield session
+
+    SQLModel.metadata.drop_all(engine)
+
+@pytest.fixture(name="client")
+def client_fixture(session: Session):
+
+    def get_session_override():
+        return session
+    
+    app.dependency_overrides[get_session] = get_session_override
+
+    client = TestClient(app)
+    yield client
+
+    app.dependency_overrides.clear()
+-e 
+
+========================================
+FILE: ./__init__.py
+========================================
+-e 
+
