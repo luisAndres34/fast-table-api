@@ -7,8 +7,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 
-from app.config import settings
-from app.models import SQLModel, User, Item
+from app.core.config import settings
+from app.models.base import SQLModel
+
+from app.models.user import User
+from app.models.category import Category
+from app.models.dish import Dish
+from app.models.order import Order, OrderItem
+from app.models.reservation import Reservation
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -43,7 +49,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
+    url = settings.DATABASE_URL
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -67,11 +73,9 @@ async def run_async_migrations() -> None:
     and associate a connection with the context.
 
     """
-     # Creamos un diccionario de configuración a partir del .ini
     config_section = config.get_section(config.config_ini_section, {})
     
-    # SOBRESCRIBIMOS la URL con la de nuestro objeto settings
-    config_section["sqlalchemy.url"] = settings.DATABASE_URL.replace("sqlite://", "sqlite+aiosqlite://")
+    config_section["sqlalchemy.url"] = settings.DATABASE_URL
 
     connectable = async_engine_from_config(
         config_section,
@@ -83,7 +87,6 @@ async def run_async_migrations() -> None:
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
-
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""

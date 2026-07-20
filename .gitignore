@@ -7,5 +7,17 @@ dist/
 wheels/
 *.egg-info
 
-# Virtual environments
-.venv
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+.env
+
+*.db
+*.sqlite3
+
+*.log
