@@ -32,10 +32,10 @@ jobs:
       - name: Install Dependencies
         run: uv sync --all-extras --dev
 
-      # 5. Execute Pytest with Coverage
+# 5. Execute Pytest with Coverage
       - name: Run Test Suite
         env:
-          ENVIRONMENT: testing
-          SECRET_KEY: ci_secret_key_for_testing_only
-          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          ENVIRONMENT: "testing"
+          SECRET_KEY: "ci_secret_key_for_testing_only"
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
         run: uv run pytest --cov=app
