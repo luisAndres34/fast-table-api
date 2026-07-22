@@ -1,0 +1,41 @@
+name: Continuous Integration (CI)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Run Pytest Suite
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Pull code from the repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. Install 'uv' (Fastest Python package manager)
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      # 3. Setup Python using the project's version
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      # 4. Install project dependencies
+      - name: Install Dependencies
+        run: uv sync --all-extras --dev
+
+      # 5. Execute Pytest with Coverage
+      - name: Run Test Suite
+        env:
+          ENVIRONMENT: testing
+          SECRET_KEY: ci_secret_key_for_testing_only
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+        run: uv run pytest --cov=app
