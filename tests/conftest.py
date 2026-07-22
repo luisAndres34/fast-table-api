@@ -42,3 +42,8 @@ async def client_fixture(session: AsyncSession):
         yield client
 
     app.dependency_overrides.clear()
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def cleanup_engine():
+    yield
+    await engine.dispose()
