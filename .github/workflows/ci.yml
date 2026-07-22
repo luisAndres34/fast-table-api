@@ -35,6 +35,7 @@ jobs:
 # 5. Execute Pytest with Coverage
       - name: Run Test Suite
         env:
+          PYTHONPATH: "."
           ENVIRONMENT: "testing"
           SECRET_KEY: "ci_secret_key_for_testing_only"
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
