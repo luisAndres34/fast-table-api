@@ -21,7 +21,7 @@ async def test_create_order_success(client: AsyncClient, session):
     data = response.json()
     assert data["table_number"] == 5
     assert data["status"] == "pending"
-    assert data["total_amount"] == 10.50
+    assert data["total_amount"] == "10.50"
     assert len(data["items"]) == 2
     assert "id" in data
 

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.crud.base import CRUDBase
@@ -8,7 +9,7 @@ from app.models.enums import OrderStatus
 class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
 
     async def create(self, session: AsyncSession, obj_in: OrderCreate) -> Order:
-        total = sum(item.quantity * item.unit_price for item in obj_in.items)
+        total = sum(Decimal(str(item.quantity)) * item.unit_price for item in obj_in.items)
         
         db_order = Order(
             table_number=obj_in.table_number,

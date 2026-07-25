@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
@@ -7,7 +8,7 @@ from app.models.enums import OrderStatus
 class OrderItemCreate(BaseModel):
     product_name: str
     quantity: int
-    unit_price: float
+    unit_price: Decimal
 
 class OrderCreate(BaseModel):
     table_number: int
@@ -18,13 +19,13 @@ class OrderItemPublic(BaseModel):
     id: uuid.UUID
     product_name: str
     quantity: int
-    unit_price: float
+    unit_price: Decimal
 
 class OrderPublic(BaseModel):
     id: uuid.UUID
     table_number: int
     status: OrderStatus
-    total_amount: float
+    total_amount: Decimal
     customer_name: str | None
     created_at: datetime
     items: list[OrderItemPublic]
