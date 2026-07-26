@@ -19,12 +19,17 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000"]
     REDIS_URL: str = "redis://redis:6379/0"
 
-    # SMTP Settings for Email Sending (Optional defaults, loaded from .env)
+    # SMTP Settings for Email Sending
     SMTP_HOST: str | None = None
     SMTP_PORT: int = 587
     SMTP_USER: str | None = None
     SMTP_PASSWORD: str | None = None
     EMAILS_FROM_EMAIL: str | None = None
+
+    # Stripe Payment Gateway Settings
+    STRIPE_SECRET_KEY: str = "sk_test_mock_key"
+    STRIPE_WEBHOOK_SECRET: str = "whsec_mock_secret"
+    STRIPE_CURRENCY: str = "usd"
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 

@@ -15,6 +15,7 @@ from app.models.category import Category
 from app.models.dish import Dish
 from app.models.order import Order, OrderItem
 from app.models.reservation import Reservation
+from app.models.payment import Payment
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

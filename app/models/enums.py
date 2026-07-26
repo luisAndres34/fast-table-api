@@ -10,6 +10,7 @@ class OrderStatus(str, Enum):
     preparing = "preparing"
     ready = "ready"
     delivered = "delivered"
+    paid = "paid"
     cancelled = "cancelled"
 
 class ReservationStatus(str, Enum):
@@ -17,3 +18,9 @@ class ReservationStatus(str, Enum):
     confirmed = "confirmed"
     cancelled = "cancelled"
     completed = "completed"
+
+class PaymentStatus(str, Enum):
+    pending = "pending"
+    succeeded = "succeeded"
+    failed = "failed"
+    refunded = "refunded"
