@@ -108,7 +108,7 @@ async def stripe_webhook(
 
         logger.info(f"Processing successful payment for Stripe Session ID: {session_id}")
 
-        payment = await crud_payment.get_by_stripe_session_id(
+        payment = await crud_payment.get_by_stripe_session_id_for_update(
             session=session, 
             session_id=session_id
         )
