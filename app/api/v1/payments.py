@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Request, Header, BackgroundTasks
+from fastapi import APIRouter, HTTPException, status, Request, Header
 import stripe
 
 from app.api.dependencies import SessionDep
