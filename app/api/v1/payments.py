@@ -102,8 +102,13 @@ async def stripe_webhook(
 
     if event["type"] == "checkout.session.completed":
         stripe_session = event["data"]["object"]
-        session_id = stripe_session.get("id")
-        payment_intent_id = stripe_session.get("payment_intent")
+
+        if isinstance(stripe_session, dict):
+            session_id = stripe_session.get("id")
+            payment_intent_id = stripe_session.get("payment_intent")
+        else:
+            session_id = getattr(stripe_session, "id", None)
+            payment_intent_id = getattr(stripe_session, "payment_intent", None)
 
         logger.info(f"Processing successful payment for Stripe Session ID: {session_id}")
 
