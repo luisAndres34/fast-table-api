@@ -10,6 +10,7 @@ import sentry_sdk
 from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import integrity_error_handler
+from app.core.tasks import create_arq_pool, close_arq_pool
 from app.api.v1.api import api_router
 
 # Initialize Sentry SDK conditionally
@@ -25,18 +26,22 @@ if settings.SENTRY_DSN and settings.ENVIRONMENT != "testing":
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Lifespan events: Code executed before the application starts receiving requests,
-    and after the application finishes handling requests.
+    Lifespan events: Manages startup and shutdown tasks for Redis Cache and ARQ Pool.
     """
     if settings.ENVIRONMENT != "testing":
         redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=False)
         FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache")
-        logger.info("Redis cache configured successfully.")
+        
+        # Initialize ARQ Redis Pool
+        await create_arq_pool()
+        logger.info("Redis cache and ARQ Pool configured successfully.")
 
         yield
 
+        # Shutdown resources cleanly
+        await close_arq_pool()
         await redis_client.close()
-        logger.info("Redis connection closed.")
+        logger.info("Redis cache and ARQ connections closed.")
     else:
         yield
 

@@ -1,4 +1,3 @@
-# --- ARCHIVO: app/api/v1/payments.py
 from fastapi import APIRouter, HTTPException, status, Request, Header, BackgroundTasks
 import stripe
 
@@ -11,6 +10,7 @@ from app.services.stripe_service import stripe_service
 from app.services.websocket_manager import ws_manager
 from app.core.email import send_real_email, generate_receipt_email_content
 from app.core.config import settings
+from app.core.tasks import enqueue_email_task
 from app.core.logger import logger
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -74,7 +74,6 @@ async def create_checkout_session(
 async def stripe_webhook(
     request: Request,
     session: SessionDep,
-    background_tasks: BackgroundTasks,
     stripe_signature: str | None = Header(None, alias="stripe-signature")
 ):
     """
@@ -146,8 +145,7 @@ async def stripe_webhook(
                         order=db_order, 
                         payment_id=str(payment.id)
                     )
-                    background_tasks.add_task(
-                        send_real_email,
+                    await enqueue_email_task(
                         recipient_email=payment.customer_email,
                         subject=f"Receipt for Table #{db_order.table_number} - FastTable",
                         html_content=receipt_html

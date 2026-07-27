@@ -1,8 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, status
+from fastapi import APIRouter, status
 from app.api.dependencies import SessionDep
 from app.models.reservation import Reservation
 from app.schemas.reservation import ReservationCreate, ReservationPublic
-from app.core.email import send_real_email
+from app.core.tasks import enqueue_email_task
 
 router = APIRouter(prefix="/reservations", tags=["reservations"])
 
@@ -23,10 +23,8 @@ def generate_reservation_email_content(name: str, date: str) -> str:
 @router.post("/", response_model=ReservationPublic, status_code=status.HTTP_201_CREATED)
 async def create_reservation(
     reservation_in: ReservationCreate, 
-    background_tasks: BackgroundTasks, 
     session: SessionDep
 ):
-
     db_reservation = Reservation(**reservation_in.model_dump())
     session.add(db_reservation)
     await session.commit()
@@ -37,8 +35,7 @@ async def create_reservation(
         date=db_reservation.reservation_date.strftime("%Y-%m-%d %H:%M")
     )
 
-    background_tasks.add_task(
-        send_real_email,
+    await enqueue_email_task(
         recipient_email=db_reservation.customer_email,
         subject="Your Table Reservation Confirmation",
         html_content=email_content
