@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = "whsec_mock_secret"
     STRIPE_CURRENCY: str = "usd"
 
+    # Sentry Monitoring Settings
+    SENTRY_DSN: str | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float = 1.0
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 settings = Settings()

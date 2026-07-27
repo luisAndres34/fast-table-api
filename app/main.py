@@ -5,11 +5,22 @@ from sqlalchemy.exc import IntegrityError
 import redis.asyncio as redis
 from fastapi_cache import FastAPICache
 from fastapi_cache.backends.redis import RedisBackend
+import sentry_sdk
 
 from app.core.config import settings
 from app.core.logger import logger
 from app.core.exceptions import integrity_error_handler
 from app.api.v1.api import api_router
+
+# Initialize Sentry SDK conditionally
+if settings.SENTRY_DSN and settings.ENVIRONMENT != "testing":
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.ENVIRONMENT,
+        traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+        send_default_pii=True,
+    )
+    logger.info(f"Sentry error tracking initialized for environment: {settings.ENVIRONMENT}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,18 +29,15 @@ async def lifespan(app: FastAPI):
     and after the application finishes handling requests.
     """
     if settings.ENVIRONMENT != "testing":
-        # Initialize Redis Cache only if we are NOT in a testing environment
         redis_client = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=False)
         FastAPICache.init(RedisBackend(redis_client), prefix="fastapi-cache")
         logger.info("Redis cache configured successfully.")
 
         yield
 
-        # Clean up resources when the app shuts down
         await redis_client.close()
         logger.info("Redis connection closed.")
     else:
-        # Bypass Redis initialization during test suite execution
         yield
 
 # Create the FastAPI application

@@ -1,23 +1,49 @@
-# Python-generated files
+# =========================
+# Environments and Secrets
+# =========================
 .env
+.env.*
+!.env.example
+
+# =========================
+# Local Databases & Docker Volumes
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+redis_data/
+
+# =========================
+# Python and Caching
+# =========================
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# =========================
+# Virtual Environments
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Build and Distribution
+# =========================
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
 
-venv/
-env/
-.venv/
-
-# Python cache
-__pycache__/
-*.pyc
-
-.env
-
-*.db
-*.sqlite3
-
-*.log
+# =========================
+# IDEs and OS Files
+# =========================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
