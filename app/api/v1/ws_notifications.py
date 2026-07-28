@@ -1,5 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.services.websocket_manager import ws_manager
+from app.core.logger import logger
 
 router = APIRouter()
 
@@ -8,7 +9,10 @@ async def endpoint_websocket(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
         while True:
-            # Maintain connection alive and listen to incoming frames if any
             await websocket.receive_text()
     except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error(f"Unexpected WebSocket error: {e}")
+    finally:
         ws_manager.disconnect(websocket)

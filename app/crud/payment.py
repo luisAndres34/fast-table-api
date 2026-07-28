@@ -14,11 +14,9 @@ class CRUDPayment(CRUDBase[Payment, PaymentCreate, PaymentUpdate]):
         result = await session.execute(statement)
         return result.scalars().first()
 
-    async def get_by_stripe_session_id_for_update(self, session: AsyncSession, session_id: str) -> Payment | None:
-        """
-        Fetches payment and applies a SELECT ... FOR UPDATE database lock 
-        to prevent race conditions on concurrent Stripe webhooks.
-        """
+    async def get_by_stripe_session_id_for_update(self, session: AsyncSession, session_id: str | None) -> Payment | None:
+        if not session_id:
+            return None
         statement = select(self.model).where(self.model.stripe_session_id == session_id).with_for_update()
         result = await session.execute(statement)
         return result.scalars().first()

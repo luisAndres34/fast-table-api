@@ -32,9 +32,15 @@ async def update_order_status(
     session: SessionDep, 
     staff: CurrentStaff
 ):
+    if status_update.status is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Status field is required for update"
+        )
+
     db_order = await crud_order.get(session=session, id=order_id)
     if not db_order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
         
     updated_order = await crud_order.update_status(
         session=session, 

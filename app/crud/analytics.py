@@ -17,9 +17,6 @@ class CRUDAnalytics:
         start_date: datetime | None = None, 
         end_date: datetime | None = None
     ) -> SalesSummaryResponse:
-        """
-        Computes total sales, paid order count, and average order value using SQL aggregation.
-        """
         statement = select(
             func.coalesce(func.sum(Order.total_amount), Decimal("0.00")).label("total_revenue"),
             func.count(Order.id).label("total_orders"),
@@ -34,7 +31,6 @@ class CRUDAnalytics:
         result = await session.execute(statement)
         row = result.one()
 
-        # Format Decimals strictly to 2 decimal places (.quantize)
         total_rev = Decimal(str(row.total_revenue)).quantize(Decimal("0.01"))
         avg_val = Decimal(str(row.average_order_value)).quantize(Decimal("0.01"))
 
@@ -53,9 +49,6 @@ class CRUDAnalytics:
         start_date: datetime | None = None, 
         end_date: datetime | None = None
     ) -> list[TopDishResponse]:
-        """
-        Retrieves the top N best-selling dishes using GROUP BY and SUM aggregations.
-        """
         statement = (
             select(
                 OrderItem.product_name,
@@ -64,9 +57,6 @@ class CRUDAnalytics:
             )
             .join(Order, OrderItem.order_id == Order.id)
             .where(Order.status == OrderStatus.paid)
-            .group_by(OrderItem.product_name)
-            .order_by(func.sum(OrderItem.quantity).desc())
-            .limit(limit)
         )
 
         if start_date:
@@ -74,10 +64,17 @@ class CRUDAnalytics:
         if end_date:
             statement = statement.where(Order.created_at <= end_date)
 
+        statement = (
+            statement
+            .group_by(OrderItem.product_name)
+            .order_by(func.sum(OrderItem.quantity).desc())
+            .limit(limit)
+        )
+
         result = await session.execute(statement)
         rows = result.all()
 
-        top_dishes = [
+        return [
             TopDishResponse(
                 product_name=row.product_name,
                 total_quantity_sold=row.total_quantity,
@@ -86,12 +83,7 @@ class CRUDAnalytics:
             for row in rows
         ]
 
-        return top_dishes
-
     async def get_reservations_summary(self, session: AsyncSession) -> ReservationsSummaryResponse:
-        """
-        Computes table reservation metrics grouped by reservation status.
-        """
         statement = select(
             func.count(Reservation.id).label("total"),
             func.count(Reservation.id).filter(Reservation.status == ReservationStatus.pending).label("pending"),

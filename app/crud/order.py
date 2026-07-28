@@ -9,7 +9,10 @@ from app.models.enums import OrderStatus
 class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
 
     async def create(self, session: AsyncSession, obj_in: OrderCreate) -> Order:
-        total = sum(Decimal(str(item.quantity)) * item.unit_price for item in obj_in.items)
+        total = sum(
+            (Decimal(str(item.quantity)) * item.unit_price for item in obj_in.items),
+            Decimal("0.00")
+        )
         
         db_order = Order(
             table_number=obj_in.table_number,
@@ -39,7 +42,9 @@ class CRUDOrder(CRUDBase[Order, OrderCreate, OrderUpdate]):
             await session.rollback()
             raise e
 
-    async def get_by_status(self, session: AsyncSession, status: str) -> list[Order]:
+    async def get_by_status(self, session: AsyncSession, status: OrderStatus | str) -> list[Order]:
+        if isinstance(status, str):
+            status = OrderStatus(status)
         statement = select(self.model).where(self.model.status == status)
         result = await session.execute(statement)
         return result.scalars().all()

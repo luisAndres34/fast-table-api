@@ -20,7 +20,7 @@ class StripeService:
         Creates a Stripe Checkout Session for a given order amount.
         Stripe amounts are calculated in cents (e.g. $10.50 -> 1050).
         """
-        amount_in_cents = int(amount * 100)
+        amount_in_cents = int((amount * 100).quantize(Decimal("1")))
 
         session_payload = {
             "payment_method_types": ["card"],

@@ -8,7 +8,7 @@ from app.schemas.payment import CreateCheckoutSessionRequest, CheckoutSessionRes
 from app.models.enums import OrderStatus, PaymentStatus
 from app.services.stripe_service import stripe_service
 from app.services.websocket_manager import ws_manager
-from app.core.email import send_real_email, generate_receipt_email_content
+from app.core.email import generate_receipt_email_content
 from app.core.config import settings
 from app.core.tasks import enqueue_email_task
 from app.core.logger import logger
@@ -24,9 +24,6 @@ async def create_checkout_session(
     body: CreateCheckoutSessionRequest,
     session: SessionDep
 ):
-    """
-    Generate a Stripe Checkout Session URL for a pending Order.
-    """
     db_order = await crud_order.get(session=session, id=body.order_id)
     if not db_order:
         raise HTTPException(
@@ -38,6 +35,12 @@ async def create_checkout_session(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail="This order has already been paid"
+        )
+
+    if db_order.status != OrderStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Cannot generate payment for order with status '{db_order.status.value}'"
         )
 
     if db_order.total_amount <= 0:
@@ -76,10 +79,6 @@ async def stripe_webhook(
     session: SessionDep,
     stripe_signature: str | None = Header(None, alias="stripe-signature")
 ):
-    """
-    Public Stripe Webhook endpoint to process real-time payment notifications.
-    Verifies cryptographic signatures before processing events.
-    """
     if not stripe_signature:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -117,23 +116,29 @@ async def stripe_webhook(
             session_id=session_id
         )
 
-        if payment and payment.status == PaymentStatus.pending:
-            await crud_payment.update_status(
-                session=session,
-                db_obj=payment,
-                new_status=PaymentStatus.succeeded,
-                payment_intent_id=payment_intent_id
-            )
+        if not payment:
+            logger.warning(f"Payment session not found for Stripe Session ID: {session_id}")
+            return {"status": "success"}
+
+        if payment.status == PaymentStatus.pending:
+            payment.status = PaymentStatus.succeeded
+            if payment_intent_id:
+                payment.stripe_payment_intent_id = payment_intent_id
+            session.add(payment)
 
             db_order = await crud_order.get(session=session, id=payment.order_id)
             if db_order:
-                await crud_order.update_status(
-                    session=session,
-                    db_obj=db_order,
-                    new_status=OrderStatus.paid
-                )
-                logger.info(f"Order ID {db_order.id} status successfully updated to 'paid'")
+                db_order.status = OrderStatus.paid
+                session.add(db_order)
 
+            await session.commit()
+            await session.refresh(payment)
+            if db_order:
+                await session.refresh(db_order)
+
+            logger.info(f"Order ID {payment.order_id} and Payment ID {payment.id} atomically updated to paid/succeeded")
+
+            if db_order:
                 websocket_message = {
                     "event": "order_paid",
                     "data": {
